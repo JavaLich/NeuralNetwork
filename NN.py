@@ -10,12 +10,28 @@ def MSE_prime(y, y_hat):
     return y - y_hat
 
 
+def soft_max(x):
+    return np.exp(x) / np.sum(np.exp(x))
+
+
+def soft_max_prime(x):
+    return -1 / x
+
+
+def cross_entropy(y_hat):
+    return -np.log(y_hat)
+
+
 def binary_cross_entropy(y, y_hat):
-    return -np.sum((y*np.log(y_hat)+(1-y)*np.log(1-y_hat)))
+    return -np.sum((y * np.log(y_hat) + (1 - y) * np.log(1 - y_hat)))
 
 
 def binary_cross_entropy_prime(y, p):
     return (y / p) - ((1 - y) / (1 - p))
+
+
+def soft_max_cross_entropy_prime(y, p):
+    return p - y
 
 
 def relu(z):
@@ -61,16 +77,52 @@ class Layer:
     def __init__(self, input_size, size, act_func="sigmoid"):
         self.size = size
         self.input_size = input_size
-        self.weights = np.random.rand(self.input_size, self.size) * np.sqrt(2/size)
+        self.weights = np.random.rand(self.input_size, self.size) / self.input_size
         self.bias = np.zeros(self.size)
         self.z = 0
         self.x = np.zeros(self.weights.shape)
         self.act_func = act_func
 
+    def derivative(self, x):
+        return funcDict[self.act_func + "Prime"](self.z) * self.weights, funcDict[self.act_func + "Prime"](self.z) * x
+
     def evaluate(self, x):
         self.x = x
         self.z = np.dot(x, self.weights) + self.bias
         return funcDict[self.act_func](self.z)
+
+
+class ConvLayer:
+
+    def __init__(self, num_filters, filter_shape, act_func="relu", pool_size=1):
+        self.num_filters = num_filters
+        self.filters = np.random.randn(num_filters, filter_shape[0], filter_shape[1]) / (
+                    filter_shape[0] * filter_shape[1])
+        self.act_func = act_func
+        self.filter_shape = filter_shape
+        self.pool_size = pool_size
+        self.softmax_input_shape = 0
+        self.softmax_input = 0
+
+    def forward(self, image):
+        output = np.zeros((image.shape[0] - (self.filter_shape[0] - 1), image.shape[1] - (self.filter_shape[1] - 1),
+                           self.num_filters))
+        for i in range(output.shape[1]):
+            for j in range(output.shape[0]):
+                region = image[i:(i + self.filter_shape[1]), j:(j + self.filter_shape[0])]
+                output[i, j] = np.sum(region * self.filters, axis=(1, 2))
+        self.softmax_input_shape = output.shape
+        self.softmax_input = self.max_pool(output).flatten()
+        return self.softmax_input
+
+    def max_pool(self, image):
+        output = np.zeros((image.shape[0] // self.pool_size, image.shape[1] // self.pool_size, self.num_filters))
+        for u in range(self.num_filters):
+            for i in range(0, image.shape[0], self.pool_size):
+                for j in range(0, image.shape[1], self.pool_size):
+                    pixel = np.max(image[i:(i + self.pool_size), j:(j + self.pool_size), u])
+                    output[i // self.pool_size, j // self.pool_size, u] = pixel
+        return output
 
 
 def create_mini_batches(x, y, batch_size):
@@ -83,9 +135,71 @@ def create_mini_batches(x, y, batch_size):
     return mini_batches_x, mini_batches_y
 
 
-# Did you look for jobs in physics and what type of jobs did you see
-# Do you think Computer Science and Physics can complement each other well
-# Would double majoring in CS/Physics be too hard
+class ConvNN:
+
+    def __init__(self, cLayer, NN):
+        self.NN = NN
+        self.cLayer = cLayer
+        self.a = 0
+        self.out = 0
+        self.max = 0
+        self.cost = 0
+        self.totals = 0
+
+    def forward(self, x, label):
+        self.a = self.cLayer.forward(x) / 255
+        self.out = self.NN.forward(self.a)
+        self.totals = self.out
+        self.max = soft_max(self.out)
+        self.cost = cross_entropy(self.max[label])
+        return self.max, self.cost
+
+    def backprop(self, x, label, lr=.05):
+        costs = []
+        for i in range(len(x)):
+            out, cost = self.forward(x[i], label[i])
+            actual = np.zeros(self.NN.output_size)
+            actual[label[i]] = 1
+            delta = soft_max_cross_entropy_prime(actual, out)
+            dldw = self.NN.layers[-1].x.reshape(self.NN.layers[-1].input_size, 1).dot(
+                delta.reshape(self.NN.output_size, 1).T)
+            dldb = delta
+            der = []
+            db = []
+            der.insert(0, dldw)
+            db.insert(0, dldb)
+
+            for j in reversed(range(len(self.NN.layers))):
+                if self.NN.layers[-1] == self.NN.layers[j]:
+                    continue
+                delta = np.dot(delta, self.NN.layers[j + 1].weights.T) * funcDict[self.NN.layers[j].act_func + "Prime"](
+                    self.NN.layers[j].z)
+                dldw = np.dot(self.NN.layers[j].x.reshape(self.NN.layers[j].x.shape[0], 1),
+                              delta.reshape(delta.shape[0], 1).T)
+                der.insert(0, dldw)
+                db.insert(0, delta)
+
+            for j in range(len(self.NN.layers)):
+                self.NN.layers[j].weights -= lr * der[j]
+                self.NN.layers[j].bias -= lr * db[j]
+
+            costs.insert(-1, cost)
+        plt.plot(costs)
+        plt.show()
+
+    def test(self, x, labels):
+        accuracy = 0
+        total = 0
+        for i in range(len(x)):
+            out, cost = self.forward(x[i], labels[i])
+            prediction = np.argmax(out)
+            if prediction == labels[i]:
+                accuracy += 1
+                total += 1
+            if i % 101 == 0 and not i == 0:
+                print(accuracy / 100)
+                accuracy = 0
+        print(total / len(x))
 
 
 class NeuralNetwork:

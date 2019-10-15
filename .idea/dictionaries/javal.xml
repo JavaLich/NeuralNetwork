@@ -2,6 +2,7 @@
   <dictionary name="javal">
     <words>
       <w>backprop</w>
+      <w>conv</w>
       <w>relu</w>
     </words>
   </dictionary>
