@@ -15,9 +15,10 @@ Constructing the layers of the neural network:
 
 Makes a network of 20 in the input layer, 1000 in the hidden layer, and 10 in the output layer with relu and sigmoid activations
 
-`nn.layer(NN.Layer(20, 1000, "relu"))`
-
-`nn.layer(NN.Layer(1000, 10, "sigmoid"))`
+```
+nn.layer(NN.Layer(20, 1000, "relu"))
+nn.layer(NN.Layer(1000, 10, "sigmoid"))
+```
 
 Possible activations:
 
