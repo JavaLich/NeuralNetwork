@@ -10,9 +10,8 @@ train_labels = mnist.train_labels()
 conv = NN.ConvLayer(8, (3, 3), "relu", 2)
 
 nn = NN.NeuralNetwork(13*13*8, 10)
-nn.layer(NN.Layer(13*13*8, 1000, "linear"))
-nn.layer(NN.Layer(1000, 10, "linear"))
+nn.layer(NN.Layer(13*13*8, 10, "linear"))
 cnn = NN.ConvNN(conv, nn)
-cnn.backprop(train_images, train_labels)
-cnn.test(test_images, test_labels)
+cnn.backprop(train_images[:1000], train_labels[:1000])
+cnn.test(test_images[:100], test_labels[:100])
 
